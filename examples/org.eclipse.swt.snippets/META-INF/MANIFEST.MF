@@ -5,6 +5,25 @@ Bundle-SymbolicName: org.eclipse.swt.snippets
 Bundle-Version: 3.4.100
 Bundle-Vendor: %providerName
 Bundle-Localization: plugin
-Require-Bundle: org.eclipse.swt
+Require-Bundle: org.eclipse.swt,
+ org.apache.batik.anim;bundle-version="[1.17.0,2.0.0)",
+ org.apache.xmlgraphics;bundle-version="[2.9.0,3.0.0)",
+ org.apache.batik.awt.util;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.css;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.dom;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.ext;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.gvt;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.parser;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.script;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.dom.svg;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.svggen;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.transcoder;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.util;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.xml;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.bridge;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.i18n;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.constants;bundle-version="[1.17.0,2.0.0)",
+ org.apache.batik.codec;bundle-version="[1.17.0,2.0.0)"
 Bundle-RequiredExecutionEnvironment: JavaSE-17
 Automatic-Module-Name: org.eclipse.swt.snippets
+
