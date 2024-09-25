@@ -13,8 +13,11 @@
  *******************************************************************************/
 package org.eclipse.swt.browser;
 
+import java.io.*;
 import java.net.*;
 import java.nio.charset.*;
+import java.nio.file.*;
+import java.nio.file.Path;
 import java.time.*;
 import java.util.*;
 import java.util.function.*;
@@ -43,6 +46,13 @@ class Edge extends WebBrowser {
 	static final String DATA_DIR_PROP = "org.eclipse.swt.browser.EdgeDataDir";
 	static final String LANGUAGE_PROP = "org.eclipse.swt.browser.EdgeLanguage";
 	static final String VERSIONT_PROP = "org.eclipse.swt.browser.EdgeVersion";
+	/**
+	 * The URI_FOR_CUSTOM_TEXT_PAGE is the path to a temporary html file which is used
+	 * by Edge browser to navigate to for setting html content in the
+	 * DOM of the browser to enable it to load local resources.
+	 */
+	private static final URI URI_FOR_CUSTOM_TEXT_PAGE = setupAndGetLocationForCustomTextPage();
+	private static final String ABOUT_BLANK = "about:blank";
 
 	private record WebViewEnvironment(ICoreWebView2Environment environment, ArrayList<Edge> instances) {
 		public WebViewEnvironment(ICoreWebView2Environment environment) {
@@ -54,6 +64,7 @@ class Edge extends WebBrowser {
 
 	ICoreWebView2 webView;
 	ICoreWebView2_2 webView_2;
+	ICoreWebView2_11 webView_11;
 	ICoreWebView2Controller controller;
 	ICoreWebView2Settings settings;
 	ICoreWebView2Environment2 environment2;
@@ -63,6 +74,9 @@ class Edge extends WebBrowser {
 	static boolean inCallback;
 	boolean inNewWindow;
 	HashMap<Long, LocationEvent> navigations = new HashMap<>();
+	private boolean ignoreFocus;
+
+	private String lastCustomText;
 
 	static {
 		NativeClearSessions = () -> {
@@ -170,6 +184,18 @@ class Edge extends WebBrowser {
 			CookieResult = hr >= COM.S_OK;
 		};
 	}
+
+private static URI setupAndGetLocationForCustomTextPage() {
+	URI absolutePath;
+	try {
+		Path tempFile = Files.createTempFile("base", ".html");
+		absolutePath = tempFile.toUri();
+		tempFile.toFile().deleteOnExit();
+	} catch (IOException e) {
+		absolutePath = URI.create(ABOUT_BLANK);
+	}
+	return absolutePath;
+}
 
 static String wstrToString(long psz, boolean free) {
 	if (psz == 0) return "";
@@ -396,6 +422,8 @@ public void create(Composite parent, int style) {
 	settings = new ICoreWebView2Settings(ppv[0]);
 	hr = webView.QueryInterface(COM.IID_ICoreWebView2_2, ppv);
 	if (hr == COM.S_OK) webView_2 = new ICoreWebView2_2(ppv[0]);
+	hr = webView.QueryInterface(COM.IID_ICoreWebView2_11, ppv);
+	if (hr == COM.S_OK) webView_11 = new ICoreWebView2_11(ppv[0]);
 
 	long[] token = new long[1];
 	IUnknown handler;
@@ -435,6 +463,11 @@ public void create(Composite parent, int style) {
 	if (webView_2 != null) {
 		handler = newCallback(this::handleDOMContentLoaded);
 		webView_2.add_DOMContentLoaded(handler, token);
+		handler.Release();
+	}
+	if (webView_11 != null) {
+		handler = newCallback(this::handleContextMenuRequested);
+		webView_11.add_ContextMenuRequested(handler, token);
 		handler.Release();
 	}
 
@@ -480,6 +513,7 @@ void browserDispose(Event event) {
 }
 
 void browserFocusIn(Event event) {
+	if (ignoreFocus) return;
 	// TODO: directional traversals
 	controller.MoveFocus(COM.COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
 }
@@ -549,7 +583,11 @@ public String getText() {
 public String getUrl() {
 	long ppsz[] = new long[1];
 	webView.get_Source(ppsz);
-	return wstrToString(ppsz[0], true);
+	return getExposedUrl(wstrToString(ppsz[0], true));
+}
+
+private String getExposedUrl(String url) {
+	return isLocationForCustomText(url) ? ABOUT_BLANK : url;
 }
 
 int handleCloseRequested(long pView, long pArgs) {
@@ -615,7 +653,7 @@ int handleNavigationStarting(long pView, long pArgs, boolean top) {
 	long[] ppszUrl = new long[1];
 	int hr = args.get_Uri(ppszUrl);
 	if (hr != COM.S_OK) return hr;
-	String url = wstrToString(ppszUrl[0], true);
+	String url = getExposedUrl(wstrToString(ppszUrl[0], true));
 	long[] pNavId = new long[1];
 	args.get_NavigationId(pNavId);
 	LocationEvent event = new LocationEvent(browser);
@@ -628,9 +666,10 @@ int handleNavigationStarting(long pView, long pArgs, boolean top) {
 		listener.changing(event);
 		if (browser.isDisposed()) return COM.S_OK;
 	}
+	// Save location and top for all events that use navigationId.
+	// will be eventually cleared again in handleNavigationCompleted().
+	navigations.put(pNavId[0], event);
 	if (event.doit) {
-		// Save location and top for all events that use navigationId.
-		navigations.put(pNavId[0], event);
 		jsEnabled = jsEnabledOnNextPage;
 		settings.put_IsScriptEnabled(jsEnabled);
 		// Register browser functions in the new document.
@@ -652,23 +691,13 @@ int handleSourceChanged(long pView, long pArgs) {
 	// to an empty string. Navigations with NavigateToString set the Source
 	// to about:blank. Initial Source is about:blank. If Source value
 	// is the same between navigations, SourceChanged isn't fired.
-	// TODO: emit missing location changed events
-	long[] ppsz = new long[1];
-	int hr = webView.get_Source(ppsz);
-	if (hr != COM.S_OK) return hr;
-	String url = wstrToString(ppsz[0], true);
-	browser.getDisplay().asyncExec(() -> {
-		if (browser.isDisposed()) return;
-		LocationEvent event = new LocationEvent(browser);
-		event.display = browser.getDisplay();
-		event.widget = browser;
-		event.location = url;
-		event.top = true;
-		for (LocationListener listener : locationListeners) {
-			listener.changed(event);
-			if (browser.isDisposed()) return;
-		}
-	});
+	// Calling LocationListener#changed() was moved to
+	// handleNavigationCompleted() to have consistent/symmetric
+	// LocationListener.changing() -> LocationListener.changed() behavior.
+	// TODO: #fragment navigation inside a page does not result in
+	// NavigationStarted / NavigationCompleted events from WebView2.
+	// so for now we cannot send consistent changing() + changed() events
+	// for those scenarios.
 	return COM.S_OK;
 }
 
@@ -691,7 +720,55 @@ int handleDOMContentLoaded(long pView, long pArgs) {
 	args.get_NavigationId(pNavId);
 	LocationEvent startEvent = navigations.get(pNavId[0]);
 	if (startEvent != null && startEvent.top) {
-		sendProgressCompleted();
+		if (lastCustomText != null && getUrl().equals(ABOUT_BLANK)) {
+			IUnknown postExecute = newCallback((long result, long json) -> {
+				sendProgressCompleted();
+				return COM.S_OK;
+			});
+			webView.ExecuteScript(
+					stringToWstr("document.open(); document.write('" + escapeForSingleQuotedJSString(lastCustomText) + "'); document.close();"),
+					postExecute);
+			postExecute.Release();
+			this.lastCustomText = null;
+		} else {
+			sendProgressCompleted();
+		}
+	}
+	return COM.S_OK;
+}
+
+private static String escapeForSingleQuotedJSString(String str) {
+	return str.replace("\\", "\\\\") //
+			.replace("'", "\\'") //
+			.replace("\r", "\\r") //
+			.replace("\n", "\\n");
+}
+
+int handleContextMenuRequested(long pView, long pArgs) {
+	ICoreWebView2ContextMenuRequestedEventArgs args = new ICoreWebView2ContextMenuRequestedEventArgs(pArgs);
+
+	long[] locationPointer = new long[1];
+	args.get_Location(locationPointer);
+	POINT pt = new POINT();
+	OS.MoveMemory(pt, locationPointer, POINT.sizeof);
+	pt.x = DPIUtil.autoScaleDown(pt.x); // To Points
+	pt.y = DPIUtil.autoScaleDown(pt.y); // To Points
+	Event event = new Event();
+	event.x = pt.x;
+	event.y = pt.y;
+	browser.notifyListeners(SWT.MenuDetect, event);
+	if (!event.doit) {
+		// Suppress context menu
+		args.put_Handled(true);
+	} else {
+		Menu menu = browser.getMenu();
+		if (menu != null && !menu.isDisposed()) {
+			args.put_Handled(true);
+			if (pt.x != event.x || pt.y != event.y) {
+				menu.setLocation(event.x, event.y);
+			}
+			menu.setVisible(true);
+		}
 	}
 	return COM.S_OK;
 }
@@ -709,11 +786,32 @@ int handleNavigationCompleted(long pView, long pArgs, boolean top) {
 	long[] pNavId = new long[1];
 	args.get_NavigationId(pNavId);
 	LocationEvent startEvent = navigations.remove(pNavId[0]);
-	if (webView_2 == null && startEvent != null && startEvent.top) {
-		// If DOMContentLoaded isn't available, fire
+	if (startEvent == null) {
+		// handleNavigationStarted() always stores the event, so this should never happen
+		return COM.S_OK;
+	}
+	if (webView_2 == null && startEvent.top) {
+		// If DOMContentLoaded (part of ICoreWebView2_2 interface) isn't available, fire
 		// ProgressListener.completed from here.
 		sendProgressCompleted();
 	}
+	int[] pIsSuccess = new int[1];
+	args.get_IsSuccess(pIsSuccess);
+	if (pIsSuccess[0] != 0) {
+		browser.getDisplay().asyncExec(() -> {
+			if (browser.isDisposed()) return;
+			LocationEvent event = new LocationEvent(browser);
+			event.display = browser.getDisplay();
+			event.widget = browser;
+			event.location = startEvent.location;
+			event.top = startEvent.top;
+			for (LocationListener listener : locationListeners) {
+				listener.changed(event);
+				if (browser.isDisposed()) return;
+			}
+		});
+	}
+
 	return COM.S_OK;
 }
 
@@ -793,7 +891,16 @@ int handleNewWindowRequested(long pView, long pArgs) {
 }
 
 int handleGotFocus(long pView, long pArg) {
-	this.browser.forceFocus();
+	// browser.forceFocus() does not result in
+	// Shell#setActiveControl(Control)
+	// being called and therefore no SWT.FocusIn event being dispatched,
+	// causing active part, etc. not to be updated correctly.
+	// The solution is to explicitly send a WM_SETFOCUS
+	// to the browser, and, while doing so, ignoring any recursive
+	// calls in #browserFocusIn(Event).
+	ignoreFocus = true;
+	OS.SendMessage (browser.handle, OS.WM_SETFOCUS, 0, 0);
+	ignoreFocus = false;
 	return COM.S_OK;
 }
 
@@ -906,15 +1013,20 @@ public void stop() {
 	webView.Stop();
 }
 
-@Override
-public boolean setText(String html, boolean trusted) {
-	char[] data = new char[html.length() + 1];
-	html.getChars(0, html.length(), data, 0);
-	return webView.NavigateToString(data) == COM.S_OK;
+private boolean isLocationForCustomText(String location) {
+		try {
+			return URI_FOR_CUSTOM_TEXT_PAGE.equals(new URI(location));
+		} catch (URISyntaxException e) {
+			return false;
+		}
 }
 
 @Override
-public boolean setUrl(String url, String postData, String[] headers) {
+public boolean setText(String html, boolean trusted) {
+	return setWebpageData(URI_FOR_CUSTOM_TEXT_PAGE.toASCIIString(), null, null, html);
+}
+
+private boolean setWebpageData(String url, String postData, String[] headers, String html) {
 	// Feature in WebView2. Partial URLs like "www.example.com" are not accepted.
 	// Prepend the protocol if it's missing.
 	if (!url.matches("[a-z][a-z0-9+.-]*:.*")) {
@@ -922,6 +1034,9 @@ public boolean setUrl(String url, String postData, String[] headers) {
 	}
 	int hr;
 	char[] pszUrl = stringToWstr(url);
+	if(isLocationForCustomText(url)) {
+		this.lastCustomText = html;
+	}
 	if (postData != null || headers != null) {
 		if (environment2 == null || webView_2 == null) {
 			SWT.error(SWT.ERROR_NOT_IMPLEMENTED, null, " [WebView2 version 88+ is required to set postData and headers]");
@@ -954,6 +1069,11 @@ public boolean setUrl(String url, String postData, String[] headers) {
 		hr = webView.Navigate(pszUrl);
 	}
 	return hr == COM.S_OK;
+}
+
+@Override
+public boolean setUrl(String url, String postData, String[] headers) {
+	return setWebpageData(url, postData, headers, null);
 }
 
 }

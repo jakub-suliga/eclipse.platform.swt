@@ -48,6 +48,7 @@ class BrowserTab extends Tab {
 
 	/* Style widgets added to the "Style" group */
 	Button webKitButton;
+	Button edgeButton;
 
 	String errorMessage, lastText, lastUrl;
 
@@ -92,6 +93,7 @@ class BrowserTab extends Tab {
 		int style = getDefaultStyle();
 		if (borderButton.getSelection ()) style |= SWT.BORDER;
 		if (webKitButton.getSelection ()) style |= SWT.WEBKIT;
+		if (edgeButton.getSelection ()) style |= SWT.EDGE;
 
 		/* Create the example widgets */
 		try {
@@ -162,8 +164,10 @@ class BrowserTab extends Tab {
 		super.createStyleGroup ();
 
 		/* Create the extra widgets */
-		webKitButton = new Button (styleGroup, SWT.CHECK);
+		webKitButton = new Button (styleGroup, SWT.RADIO);
 		webKitButton.setText ("SWT.WEBKIT");
+		edgeButton = new Button (styleGroup, SWT.RADIO);
+		edgeButton.setText ("SWT.EDGE");
 		borderButton = new Button (styleGroup, SWT.CHECK);
 		borderButton.setText ("SWT.BORDER");
 	}
@@ -209,7 +213,7 @@ class BrowserTab extends Tab {
 		/* store the state of the Browser if applicable */
 		if (browser != null) {
 			String url = browser.getUrl();
-			if (url.length() > 0 && !url.equals("about:blank")) { //$NON-NLS-1$
+			if (url.length() > 0 && !browser.isLocationForCustomText(url)) { //$NON-NLS-1$
 				lastUrl = url;
 			} else {
 				String text = browser.getText();
@@ -340,6 +344,7 @@ class BrowserTab extends Tab {
 	void setExampleWidgetState () {
 		super.setExampleWidgetState ();
 		webKitButton.setSelection (browser == null ? false : (browser.getStyle () & SWT.WEBKIT) != 0);
+		edgeButton.setSelection (browser == null ? false : (browser.getStyle () & SWT.EDGE) != 0);
 		borderButton.setSelection (browser == null ? false : (browser.getStyle () & SWT.BORDER) != 0);
 	}
 }

@@ -519,6 +519,75 @@ public void test_LocationListener_addAndRemove() {
 }
 
 @Test
+public void test_isLocationForCustomText_setUrlAfterDisposedThrowsSwtException() {
+	Browser testBrowser = createBrowser(shell, SWT.NONE);
+	testBrowser.dispose();
+	assertThrows(SWTException.class, () -> testBrowser.isLocationForCustomText("about:blank"));
+}
+
+@Test
+public void test_isLocationForCustomText_isSetUrlNotCustomTextUrlAfterSetText() {
+	String url = getValidUrl();
+	AtomicBoolean locationChanged = new AtomicBoolean(false);
+	browser.addLocationListener(changedAdapter(event -> {
+			locationChanged.set(true);
+	}));
+
+	browser.setText("Custom text");
+	assertTrue("Time Out: The Browser didn't navigate to the URL", waitForPassCondition(locationChanged::get));
+	locationChanged.set(false);
+	browser.setUrl(url);
+	assertTrue("Time Out: The Browser didn't navigate to the URL", waitForPassCondition(locationChanged::get));
+	assertFalse("The navigated URL is falsly indicated to be the custom text URL", browser.isLocationForCustomText(browser.getUrl()));
+}
+
+@Test
+public void test_isLocationForCustomText_isFirstSetTextURLStillCustomTextUrlAfterSetUrl() {
+	AtomicBoolean locationChanged = new AtomicBoolean(false);
+	browser.addLocationListener(changedAdapter(event -> locationChanged.set(true)));
+	String url = getValidUrl();
+	browser.setText("Custom text");
+	assertTrue(waitForPassCondition(locationChanged::get));
+	String firstUrl = browser.getUrl();
+	locationChanged.set(false);
+	browser.setUrl(url);
+	assertTrue("Time Out: The Browser didn't navigate to the URL", waitForPassCondition(locationChanged::get));
+	assertTrue(browser.isLocationForCustomText(firstUrl));
+	assertFalse(browser.isLocationForCustomText(browser.getUrl()));
+}
+
+private String getValidUrl() {
+	String pluginPath = System.getProperty("PLUGIN_PATH");
+	testLogAppend("PLUGIN_PATH: " + pluginPath);
+	// When test is run via Ant, URL needs to be acquired differently. In that case the PLUGIN_PATH property is set and used.
+	if (pluginPath != null) {
+		return pluginPath + "/data/testWebsiteWithTitle.html";
+	} else {
+		// used when ran from Eclipse gui.
+		return Test_org_eclipse_swt_browser_Browser.class.getClassLoader().getResource("testWebsiteWithTitle.html").toString();
+	}
+}
+
+@Test
+public void test_isLocationForCustomText_isSetUrlNotCustomTextUrl() {
+	AtomicBoolean locationChanged = new AtomicBoolean(false);
+	browser.addLocationListener(changedAdapter(event -> locationChanged.set(true)));
+	String url = getValidUrl();
+	browser.setUrl(url);
+	waitForPassCondition(locationChanged::get);
+	assertFalse("Url is wrongly considered Custom Text Url", browser.isLocationForCustomText(browser.getUrl()));
+}
+
+@Test
+public void test_isLocationForCustomText() {
+	AtomicBoolean locationChanged = new AtomicBoolean(false);
+	browser.addLocationListener(changedAdapter(e -> locationChanged.set(true)));
+	browser.setText("Hello world");
+	assertTrue("Timeout: LocationListener.changing() event was never fired", waitForPassCondition(locationChanged::get));
+	assertTrue("Custom Text URI was not loaded on setText", browser.isLocationForCustomText(browser.getUrl()));
+}
+
+@Test
 public void test_LocationListener_changing() {
 	AtomicBoolean changingFired = new AtomicBoolean(false);
 	browser.addLocationListener(changingAdapter(e -> changingFired.set(true)));
@@ -529,7 +598,6 @@ public void test_LocationListener_changing() {
 }
 @Test
 public void test_LocationListener_changed() {
-	assumeFalse("behavior is not (yet) supported by Edge browser", isEdge);
 
 	AtomicBoolean changedFired = new AtomicBoolean(false);
 	browser.addLocationListener(changedAdapter(e ->	changedFired.set(true)));
@@ -539,9 +607,20 @@ public void test_LocationListener_changed() {
 	assertTrue("LocationListener.changed() event was never fired", passed);
 }
 @Test
-public void test_LocationListener_changingAndOnlyThenChanged() {
-	assumeFalse("behavior is not (yet) supported by Edge browser", isEdge);
+public void test_LocationListener_changed_twoSetTextCycles() {
+	AtomicInteger changedCount = new AtomicInteger();
+	browser.addLocationListener(changedAdapter(e -> changedCount.incrementAndGet()));
+	shell.open();
+	browser.setText("Hello world");
+	boolean passed = waitForPassCondition(() -> changedCount.get() == 1);
+	assertTrue("LocationListener.changed() event was never fired", passed);
+	browser.setText("2nd text");
+	passed = waitForPassCondition(() -> changedCount.get() == 2);
+	assertTrue("LocationListener.changed() event was not fired for the 2nd text change", passed);
+}
 
+@Test
+public void test_LocationListener_changingAndOnlyThenChanged() {
 	// Test proper order of events.
 	// Check that 'changed' is only fired after 'changing' has fired at least once.
 	AtomicBoolean changingFired = new AtomicBoolean(false);
@@ -585,8 +664,6 @@ public void test_LocationListener_changingAndOnlyThenChanged() {
 
 @Test
 public void test_LocationListener_then_ProgressListener() {
-	assumeFalse("behavior is not (yet) supported by Edge browser", isEdge);
-
 	AtomicBoolean locationChanged = new AtomicBoolean(false);
 	AtomicBoolean progressChanged = new AtomicBoolean(false);
 	AtomicBoolean progressChangedAfterLocationChanged = new AtomicBoolean(false);
@@ -680,8 +757,6 @@ public void test_LocationListener_ProgressListener_cancledLoad () {
 @Test
 /** Ensue that only one changed and one completed event are fired for url changes */
 public void test_LocationListener_ProgressListener_noExtraEvents() {
-	assumeFalse("behavior is not (yet) supported by Edge browser", isEdge);
-
 	AtomicInteger changedCount = new AtomicInteger(0);
 	AtomicInteger completedCount = new AtomicInteger(0);
 
@@ -788,7 +863,6 @@ public void test_OpenWindowListener_open_ChildPopup() {
 /** Validate event order : Child's visibility should come before progress completed event */
 @Test
 public void test_OpenWindow_Progress_Listener_ValidateEventOrder() {
-	assumeFalse("behavior is not (yet) supported by Edge browser", isEdge);
 
 	AtomicBoolean windowOpenFired = new AtomicBoolean(false);
 	AtomicBoolean childCompleted = new AtomicBoolean(false);
@@ -1033,7 +1107,6 @@ public void test_TitleListener_event() {
 	assertTrue(errMsg, passed);
 }
 
-
 @Test
 public void test_setText() {
 	String expectedTitle = "Website Title";
@@ -1045,26 +1118,51 @@ public void test_setText() {
 	validateTitleChanged(expectedTitle, browserSetFunc);
 }
 
+/**
+ * Corner-case, probably only relevant on Edge, see
+ * https://github.com/eclipse-platform/eclipse.platform.swt/pull/1463
+ */
+@Test
+public void test_setTextContainingScript_applicationLayerProgressListenerMustSeeUpToDateDom() {
+	AtomicBoolean completed = new AtomicBoolean();
+	browser.addProgressListener(ProgressListener.completedAdapter(event -> {
+		String script = """
+				var h1s = document.getElementsByTagName("h1");
+				// extract the information from the DOM via the document's title
+				// since getText() afterwards does not necessarily return the updated DOM (platform-dependent)
+				document.title = "ProgressListener: Found " + h1s.length + " h1 tag(s)";
+				""";
+		browser.execute(script);
+		completed.set(true);
+	}));
+	AtomicReference<String> title = new AtomicReference<>();
+	browser.addTitleListener(event -> {
+		if (event.title.startsWith("ProgressListener: ")) {
+			title.set(event.title);
+		}
+	});
+	browser.setText("""
+			<html>
+				<head>
+					<script src=\"file:///does/not/really/needs/to/exist.js\"></script>
+				</head>
+				<body>
+					<h1>Hello, World!</h1>
+				</body>
+			</html>
+			""");
+	waitForPassCondition(completed::get);
+	waitForPassCondition(() -> title.get() != null);
+	assertEquals("ProgressListener: Found 1 h1 tag(s)", title.get());
+}
+
 @Test
 public void test_setUrl_local() {
 	assumeFalse("Test fails on Mac, see https://github.com/eclipse-platform/eclipse.platform.swt/issues/722", SwtTestUtil.isCocoa);
 	String expectedTitle = "Website Title";
 	Runnable browserSetFunc = () -> {
-
-		String pluginPath = System.getProperty("PLUGIN_PATH");
-		testLogAppend("PLUGIN_PATH: " + pluginPath);
-
-		String url;
-		// Depending on how the jUnit test is ran, (gui/maven/ant), url for local file needs to be acquired differently.
-		if (pluginPath != null) {
-			url = pluginPath + "/data/testWebsiteWithTitle.html";
-		} else {
-			// used when ran from Eclipse gui.
-			url = Test_org_eclipse_swt_browser_Browser.class.getClassLoader().getResource("testWebsiteWithTitle.html").toString();
-		}
-
+		String url = getValidUrl();
 		testLogAppend("URL: " + url);
-
 		boolean opSuccess = browser.setUrl(url);
 		assertTrue("Expecting setUrl() to return true" + testLog.toString(), opSuccess);
 	};
@@ -1140,16 +1238,16 @@ private void validateTitleChanged(String expectedTitle, Runnable browserSetFunc)
 	browserSetFunc.run();
 	shell.open();
 
-	boolean hasFinished = waitForPassCondition(() -> actualTitle.get().length() != 0
-			&& !actualTitle.get().contains("about:blank")); // Windows sometimes does 2 loads, one "about:blank", and one actual load.
-	boolean passed = hasFinished && actualTitle.get().equals(expectedTitle);
+	boolean passed = waitForPassCondition(() -> actualTitle.get().equals(expectedTitle));
 	String errMsg = "";
-	if (!hasFinished)
-		errMsg = "Test timed out. TitleListener not fired";
-	else if (!actualTitle.get().equals(expectedTitle)) {
-		errMsg = "\nExpected title and actual title do not match."
-				+ "\nExpected: " + expectedTitle
-				+ "\nActual: " + actualTitle;
+	if (!passed) {
+		if (actualTitle.get().length() == 0) {
+			errMsg = "Test timed out. TitleListener not fired";
+		} else {
+			errMsg = "\nExpected title and actual title do not match."
+					+ "\nExpected: " + expectedTitle
+					+ "\nActual: " + actualTitle;
+		}
 	}
 	assertTrue(errMsg + testLog.toString(), passed);
 }
@@ -1269,8 +1367,6 @@ public void test_VisibilityWindowListener_multiple_shells() {
  */
 @Test
 public void test_VisibilityWindowListener_eventSize() {
-	assumeFalse("behavior is not (yet) supported by Edge browser", isEdge);
-
 	shell.setSize(200,300);
 	AtomicBoolean childCompleted = new AtomicBoolean(false);
 	AtomicReference<Point> result = new AtomicReference<>(new Point(0,0));
