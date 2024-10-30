@@ -153,7 +153,7 @@ public class Display extends Device implements Executor {
 	}
 
 	/* XP Themes */
-	long hButtonTheme, hButtonThemeDark, hEditTheme, hExplorerBarTheme, hScrollBarTheme, hScrollBarThemeDark, hTabTheme;
+	private Map<Integer, ThemeData> themeDataMap = new HashMap<>();
 	static final char [] EXPLORER = new char [] {'E', 'X', 'P', 'L', 'O', 'R', 'E', 'R', 0};
 	static final char [] TREEVIEW = new char [] {'T', 'R', 'E', 'E', 'V', 'I', 'E', 'W', 0};
 	/* Emergency switch to be used in case of regressions. Not supposed to be changed when app is running. */
@@ -270,6 +270,17 @@ public class Display extends Device implements Executor {
 	 */
 	static final String USE_DARKTHEME_TEXT_ICONS = "org.eclipse.swt.internal.win32.Text.useDarkThemeIcons"; //$NON-NLS-1$
 	boolean textUseDarkthemeIcons = false;
+	/**
+	 * Use dark prefered color scheme in Edge browser.
+	 * Note:<br>
+	 * <ul>
+	 *   <li>When setting this property on the display, it is first AND'ed with !disableCustomThemeTweaks.
+	 *   <li>The data is then read from withing Edge.
+	 *   <li>This is to avoid adding public methods/members.
+	 * </ul>
+	 * Expects a <code>boolean</code> value.
+	 */
+	static final String EDGE_USE_DARK_PREFERED_COLOR_SCHEME = "org.eclipse.swt.internal.win32.Edge.useDarkPreferedColorScheme"; //$NON-NLS-1$
 
 	/* Custom icons */
 	private HashMap<Integer, Long> sizeToSearchIconHandle = new HashMap<>();
@@ -2667,93 +2678,55 @@ public boolean getTouchEnabled () {
 	return (value & (OS.NID_READY | OS.NID_MULTI_INPUT)) == (OS.NID_READY | OS.NID_MULTI_INPUT);
 }
 
-long hButtonTheme () {
-	if (hButtonTheme != 0) return hButtonTheme;
-	final char[] themeName = "BUTTON\0".toCharArray();
-	return hButtonTheme = OS.OpenThemeData (hwndMessage, themeName);
+long hButtonTheme (int dpi) {
+	return getOrCreateThemeData(dpi).hButtonTheme();
 }
 
-long hButtonThemeDark () {
-	if (hButtonThemeDark != 0) return hButtonThemeDark;
-	final char[] themeName = "Darkmode_Explorer::BUTTON\0".toCharArray();
-	return hButtonThemeDark = OS.OpenThemeData (hwndMessage, themeName);
+long hButtonThemeDark (int dpi) {
+	return getOrCreateThemeData(dpi).hButtonThemeDark();
 }
 
-long hButtonThemeAuto () {
+long hButtonThemeAuto (int dpi) {
 	if (useDarkModeExplorerTheme) {
-		return hButtonThemeDark ();
+		return hButtonThemeDark (dpi);
 	} else {
-		return hButtonTheme ();
+		return hButtonTheme (dpi);
 	}
 }
 
-long hEditTheme () {
-	if (hEditTheme != 0) return hEditTheme;
-	final char[] themeName = "EDIT\0".toCharArray();
-	return hEditTheme = OS.OpenThemeData (hwndMessage, themeName);
+long hEditTheme (int dpi) {
+	return getOrCreateThemeData(dpi).hEditTheme();
 }
 
-long hExplorerBarTheme () {
-	if (hExplorerBarTheme != 0) return hExplorerBarTheme;
-	final char[] themeName = "EXPLORERBAR\0".toCharArray();
-	return hExplorerBarTheme = OS.OpenThemeData (hwndMessage, themeName);
+long hExplorerBarTheme (int dpi) {
+	return getOrCreateThemeData(dpi).hExplorerBarTheme();
 }
 
-long hScrollBarTheme () {
-	if (hScrollBarTheme != 0) return hScrollBarTheme;
-	final char[] themeName = "SCROLLBAR\0".toCharArray();
-	return hScrollBarTheme = OS.OpenThemeData (hwndMessage, themeName);
+long hScrollBarTheme (int dpi) {
+	return getOrCreateThemeData(dpi).hScrollBarTheme();
 }
 
-long hScrollBarThemeDark () {
-	if (hScrollBarThemeDark != 0) return hScrollBarThemeDark;
-	final char[] themeName = "Darkmode_Explorer::SCROLLBAR\0".toCharArray();
-	return hScrollBarThemeDark = OS.OpenThemeData (hwndMessage, themeName);
+long hScrollBarThemeDark (int dpi) {
+	return getOrCreateThemeData(dpi).hScrollBarThemeDark();
 }
 
-long hScrollBarThemeAuto () {
+long hScrollBarThemeAuto (int dpi) {
 	if (useDarkModeExplorerTheme) {
-		return hScrollBarThemeDark ();
+		return hScrollBarThemeDark (dpi);
 	} else {
-		return hScrollBarTheme ();
+		return hScrollBarTheme (dpi);
 	}
 }
 
-long hTabTheme () {
-	if (hTabTheme != 0) return hTabTheme;
-	final char[] themeName = "TAB\0".toCharArray();
-	return hTabTheme = OS.OpenThemeData (hwndMessage, themeName);
+long hTabTheme (int dpi) {
+	return getOrCreateThemeData(dpi).hTabTheme();
 }
 
 void resetThemes() {
-	if (hButtonTheme != 0) {
-		OS.CloseThemeData (hButtonTheme);
-		hButtonTheme = 0;
+	for (ThemeData themeData : themeDataMap.values()) {
+		themeData.reset();
 	}
-	if (hButtonThemeDark != 0) {
-		OS.CloseThemeData (hButtonThemeDark);
-		hButtonThemeDark = 0;
-	}
-	if (hEditTheme != 0) {
-		OS.CloseThemeData (hEditTheme);
-		hEditTheme = 0;
-	}
-	if (hExplorerBarTheme != 0) {
-		OS.CloseThemeData (hExplorerBarTheme);
-		hExplorerBarTheme = 0;
-	}
-	if (hScrollBarTheme != 0) {
-		OS.CloseThemeData (hScrollBarTheme);
-		hScrollBarTheme = 0;
-	}
-	if (hScrollBarThemeDark != 0) {
-		OS.CloseThemeData (hScrollBarThemeDark);
-		hScrollBarThemeDark = 0;
-	}
-	if (hTabTheme != 0) {
-		OS.CloseThemeData (hTabTheme);
-		hTabTheme = 0;
-	}
+	themeDataMap.clear();
 }
 
 /**
@@ -3195,7 +3168,7 @@ private Rectangle translateRectangleInPixelsInDisplayCoordinateSystem(int x, int
 
 private Rectangle translateRectangleInPixelsInDisplayCoordinateSystem(int x, int y, int width, int height, Monitor monitorOfLocation, Monitor monitorOfArea) {
 	Point topLeft = getPixelsFromPoint(monitorOfLocation, x, y);
-	int zoom = DPIUtil.getZoomForAutoscaleProperty(monitorOfArea.zoom);
+	int zoom = getApplicableMonitorZoom(monitorOfArea);
 	int widthInPixels = DPIUtil.scaleUp(width, zoom);
 	int heightInPixels = DPIUtil.scaleUp(height, zoom);
 	return new Rectangle(topLeft.x, topLeft.y, widthInPixels, heightInPixels);
@@ -3214,10 +3187,14 @@ private Rectangle translateRectangleInPointsInDisplayCoordinateSystem(int x, int
 
 private Rectangle translateRectangleInPointsInDisplayCoordinateSystem(int x, int y, int widthInPixels, int heightInPixels, Monitor monitorOfLocation, Monitor monitorOfArea) {
 	Point topLeft = getPointFromPixels(monitorOfLocation, x, y);
-	int zoom = DPIUtil.getZoomForAutoscaleProperty(monitorOfArea.zoom);
+	int zoom = getApplicableMonitorZoom(monitorOfArea);
 	int width = DPIUtil.scaleDown(widthInPixels, zoom);
 	int height = DPIUtil.scaleDown(heightInPixels, zoom);
 	return new Rectangle(topLeft.x, topLeft.y, width, height);
+}
+
+private int getApplicableMonitorZoom(Monitor monitor) {
+	return DPIUtil.getZoomForAutoscaleProperty(isRescalingAtRuntime() ? monitor.zoom : getDeviceZoom());
 }
 
 long messageProc (long hwnd, long msg, long wParam, long lParam) {
@@ -4609,6 +4586,9 @@ public void setData (String key, Object value) {
 		case USE_DARKTHEME_TEXT_ICONS:
 			textUseDarkthemeIcons = !disableCustomThemeTweaks && _toBoolean(value);
 			break;
+		case EDGE_USE_DARK_PREFERED_COLOR_SCHEME:
+			value = !disableCustomThemeTweaks && _toBoolean(value);
+			break;
 	}
 
 	/* Remove the key/value pair */
@@ -5315,6 +5295,108 @@ static boolean isActivateShellOnForceFocus() {
 	return "true".equals(System.getProperty("org.eclipse.swt.internal.activateShellOnForceFocus", "true")); //$NON-NLS-1$
 }
 
+private ThemeData getOrCreateThemeData(int dpi) {
+	if (themeDataMap.containsKey(dpi)) {
+		return themeDataMap.get(dpi);
+	}
+	ThemeData themeData = new ThemeData(dpi);
+	themeDataMap.put(dpi, themeData);
+	return themeData;
+}
+
+private class ThemeData {
+	private long hButtonTheme;
+	private long hButtonThemeDark;
+	private long hEditTheme;
+	private long hExplorerBarTheme;
+	private long hScrollBarTheme;
+	private long hScrollBarThemeDark;
+	private long hTabTheme;
+
+	private int dpi;
+
+	private ThemeData(int dpi) {
+		this.dpi = dpi;
+	}
+
+	long hButtonTheme () {
+		if (hButtonTheme != 0) return hButtonTheme;
+		final char[] themeName = "BUTTON\0".toCharArray();
+		return hButtonTheme = openThemeData(themeName);
+	}
+
+	long hButtonThemeDark () {
+		if (hButtonThemeDark != 0) return hButtonThemeDark;
+		final char[] themeName = "Darkmode_Explorer::BUTTON\0".toCharArray();
+		return hButtonThemeDark = openThemeData(themeName);
+	}
+
+	long hEditTheme () {
+		if (hEditTheme != 0) return hEditTheme;
+		final char[] themeName = "EDIT\0".toCharArray();
+		return hEditTheme = openThemeData(themeName);
+	}
+
+	long hExplorerBarTheme () {
+		if (hExplorerBarTheme != 0) return hExplorerBarTheme;
+		final char[] themeName = "EXPLORERBAR\0".toCharArray();
+		return hExplorerBarTheme = openThemeData(themeName);
+	}
+
+	long hScrollBarTheme () {
+		if (hScrollBarTheme != 0) return hScrollBarTheme;
+		final char[] themeName = "SCROLLBAR\0".toCharArray();
+		return hScrollBarTheme = openThemeData(themeName);
+	}
+
+	long hScrollBarThemeDark () {
+		if (hScrollBarThemeDark != 0) return hScrollBarThemeDark;
+		final char[] themeName = "Darkmode_Explorer::SCROLLBAR\0".toCharArray();
+		return hScrollBarThemeDark = openThemeData(themeName);
+	}
+
+	long hTabTheme () {
+		if (hTabTheme != 0) return hTabTheme;
+		final char[] themeName = "TAB\0".toCharArray();
+		return hTabTheme = openThemeData(themeName);
+	}
+
+
+	public void reset() {
+		if (hButtonTheme != 0) {
+			OS.CloseThemeData (hButtonTheme);
+			hButtonTheme = 0;
+		}
+		if (hButtonThemeDark != 0) {
+			OS.CloseThemeData (hButtonThemeDark);
+			hButtonThemeDark = 0;
+		}
+		if (hEditTheme != 0) {
+			OS.CloseThemeData (hEditTheme);
+			hEditTheme = 0;
+		}
+		if (hExplorerBarTheme != 0) {
+			OS.CloseThemeData (hExplorerBarTheme);
+			hExplorerBarTheme = 0;
+		}
+		if (hScrollBarTheme != 0) {
+			OS.CloseThemeData (hScrollBarTheme);
+			hScrollBarTheme = 0;
+		}
+		if (hScrollBarThemeDark != 0) {
+			OS.CloseThemeData (hScrollBarThemeDark);
+			hScrollBarThemeDark = 0;
+		}
+		if (hTabTheme != 0) {
+			OS.CloseThemeData (hTabTheme);
+			hTabTheme = 0;
+		}
+	}
+
+	private long openThemeData(final char[] themeName) {
+		return OS.OpenThemeData(hwndMessage, themeName, dpi);
+	}
+}
 /**
  * {@return whether rescaling of shells at runtime when the DPI scaling of a
  * shell's monitor changes is activated for this device}
@@ -5416,21 +5498,21 @@ private Monitor getContainingMonitorInPixelsCoordinate(int xInPixels, int yInPix
 }
 
 private Rectangle getMonitorClientAreaInPixels(Monitor monitor) {
-	int zoom = DPIUtil.getZoomForAutoscaleProperty(monitor.zoom);
+	int zoom = getApplicableMonitorZoom(monitor);
 	int widthInPixels = DPIUtil.scaleUp(monitor.clientWidth, zoom);
 	int heightInPixels = DPIUtil.scaleUp(monitor.clientHeight, zoom);
 	return new Rectangle(monitor.clientX, monitor.clientY, widthInPixels, heightInPixels);
 }
 
 private Point getPixelsFromPoint(Monitor monitor, int x, int y) {
-	int zoom = DPIUtil.getZoomForAutoscaleProperty(monitor.zoom);
+	int zoom = getApplicableMonitorZoom(monitor);
 	int mappedX = DPIUtil.scaleUp(x - monitor.clientX, zoom) + monitor.clientX;
 	int mappedY = DPIUtil.scaleUp(y - monitor.clientY, zoom) + monitor.clientY;
 	return new Point(mappedX, mappedY);
 }
 
 private Point getPointFromPixels(Monitor monitor, int x, int y) {
-	int zoom = DPIUtil.getZoomForAutoscaleProperty(monitor.zoom);
+	int zoom = getApplicableMonitorZoom(monitor);
 	int mappedX = DPIUtil.scaleDown(x - monitor.clientX, zoom) + monitor.clientX;
 	int mappedY = DPIUtil.scaleDown(y - monitor.clientY, zoom) + monitor.clientY;
 	return new Point(mappedX, mappedY);

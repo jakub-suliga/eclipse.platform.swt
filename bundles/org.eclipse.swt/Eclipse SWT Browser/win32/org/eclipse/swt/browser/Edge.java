@@ -40,6 +40,8 @@ class Edge extends WebBrowser {
 
 	// Display.getData() keys
 	static final String APPLOCAL_DIR_KEY = "org.eclipse.swt.internal.win32.appLocalDir";
+	static final String EDGE_USER_DATA_FOLDER = "org.eclipse.swt.internal.win32.Edge.userDataFolder";
+	static final String EDGE_USE_DARK_PREFERED_COLOR_SCHEME = "org.eclipse.swt.internal.win32.Edge.useDarkPreferedColorScheme"; //$NON-NLS-1$
 
 	// System.getProperty() keys
 	static final String BROWSER_DIR_PROP = "org.eclipse.swt.browser.EdgeDir";
@@ -64,6 +66,7 @@ class Edge extends WebBrowser {
 	private static Map<Display, WebViewEnvironment> webViewEnvironments = new HashMap<>();
 	ICoreWebView2Controller controller;
 	ICoreWebView2Settings settings;
+	ICoreWebView2Profile profile;
 	ICoreWebView2Environment2 environment2;
 	private final WebViewProvider webViewProvider = new WebViewProvider();
 
@@ -74,6 +77,9 @@ class Edge extends WebBrowser {
 	HashMap<Long, LocationEvent> navigations = new HashMap<>();
 	private boolean ignoreFocus;
 	private String lastCustomText;
+
+	private static record CursorPosition(Point location, boolean isInsideBrowser) {};
+	private CursorPosition previousCursorPosition = new CursorPosition(new Point(0, 0), false);
 
 	static {
 		NativeClearSessions = () -> {
@@ -285,6 +291,7 @@ class WebViewProvider {
 	private CompletableFuture<ICoreWebView2_2> webView_2Future = new CompletableFuture<>();
 	private CompletableFuture<ICoreWebView2_11> webView_11Future = new CompletableFuture<>();
 	private CompletableFuture<ICoreWebView2_12> webView_12Future = new CompletableFuture<>();
+	private CompletableFuture<ICoreWebView2_13> webView_13Future = new CompletableFuture<>();
 
 	private CompletableFuture<Void> lastWebViewTask = webViewFuture.thenRun(() -> {});
 
@@ -295,6 +302,7 @@ class WebViewProvider {
 		initializeWebView_2(webView);
 		initializeWebView_11(webView);
 		initializeWebView_12(webView);
+		initializeWebView_13(webView);
 		webViewFuture.complete(webView);
 		return webView;
 	}
@@ -326,6 +334,16 @@ class WebViewProvider {
 			webView_12Future.complete(new ICoreWebView2_12(ppv[0]));
 		} else {
 			webView_12Future.cancel(true);
+		}
+	}
+
+	private void initializeWebView_13(ICoreWebView2 webView) {
+		long[] ppv = new long[1];
+		int hr = webView.QueryInterface(COM.IID_ICoreWebView2_13, ppv);
+		if (hr == COM.S_OK) {
+			webView_13Future.complete(new ICoreWebView2_13(ppv[0]));
+		} else {
+			webView_13Future.cancel(true);
 		}
 	}
 
@@ -370,6 +388,18 @@ class WebViewProvider {
 	boolean isWebView_12Available() {
 		waitForFutureToFinish(webView_12Future);
 		return !webView_12Future.isCancelled();
+	}
+
+	ICoreWebView2_13 getWebView_13(boolean waitForPendingWebviewTasksToFinish) {
+		if(waitForPendingWebviewTasksToFinish) {
+			waitForFutureToFinish(lastWebViewTask);
+		}
+		return webView_13Future.join();
+	}
+
+	boolean isWebView_13Available() {
+		waitForFutureToFinish(webView_13Future);
+		return !webView_13Future.isCancelled();
 	}
 
 	/*
@@ -447,13 +477,9 @@ WebViewEnvironment createEnvironment() {
 
 	// Gather customization properties
 	String browserDir = System.getProperty(BROWSER_DIR_PROP);
-	String dataDir = System.getProperty(DATA_DIR_PROP);
 	String browserArgs = System.getProperty(BROWSER_ARGS_PROP);
 	String language = System.getProperty(LANGUAGE_PROP);
-	if (dataDir == null) {
-		// WebView2 will append "\\EBWebView"
-		dataDir = (String)display.getData(APPLOCAL_DIR_KEY);
-	}
+	String dataDir = getDataDir(display);
 
 	// Initialize options
 	long pOpts = COM.CreateSwtWebView2Options();
@@ -503,6 +529,18 @@ WebViewEnvironment createEnvironment() {
 	return environmentWrapper;
 }
 
+private String getDataDir(Display display) {
+	String dataDir = System.getProperty(DATA_DIR_PROP);
+	if (dataDir == null) {
+		dataDir = (String) display.getData(EDGE_USER_DATA_FOLDER);
+	}
+	if (dataDir == null) {
+		// WebView2 will append "\\EBWebView"
+		dataDir = (String)display.getData(APPLOCAL_DIR_KEY);
+	}
+	return dataDir;
+}
+
 @Override
 public void create(Composite parent, int style) {
 	containingEnvironment = createEnvironment();
@@ -545,6 +583,18 @@ void setupBrowser(int hr, long pv) {
 		// Disable internal status bar on the bottom left of the Browser control
 		// Send out StatusTextEvents via handleStatusBarTextChanged for SWT consumers
 		settings.put_IsStatusBarEnabled(false);
+	}
+
+	if (webViewProvider.isWebView_13Available()) {
+		webViewProvider.getWebView_13(false).get_Profile(ppv);
+		profile = new ICoreWebView2Profile(ppv[0]);
+
+		// Dark theme inherited from application theme
+		if (Boolean.TRUE.equals(browser.getDisplay().getData(EDGE_USE_DARK_PREFERED_COLOR_SCHEME))) {
+			profile.put_PreferredColorScheme(/* COREWEBVIEW2_PREFERRED_COLOR_SCHEME_DARK */ 2);
+		} else {
+			profile.put_PreferredColorScheme(/* COREWEBVIEW2_PREFERRED_COLOR_SCHEME_LIGHT */ 1);
+		}
 	}
 
 	long[] token = new long[1];
@@ -607,6 +657,7 @@ void setupBrowser(int hr, long pv) {
 	browser.addListener(SWT.FocusIn, this::browserFocusIn);
 	browser.addListener(SWT.Resize, this::browserResize);
 	browser.addListener(SWT.Move, this::browserMove);
+	scheduleMouseMovementHandling();
 
 	containingEnvironment.instances().add(this);
 	// Sometimes when the shell of the browser is opened before the browser is
@@ -660,6 +711,52 @@ void browserResize(Event event) {
 	OS.GetClientRect(browser.handle, rect);
 	controller.put_Bounds(rect);
 	controller.put_IsVisible(true);
+}
+
+private void scheduleMouseMovementHandling() {
+	browser.getDisplay().timerExec(100, () -> {
+		if (browser.isDisposed()) {
+			return;
+		}
+		if (browser.isVisible() && hasDisplayFocus()) {
+			handleMouseMovement();
+		}
+		scheduleMouseMovementHandling();
+	});
+}
+
+private void handleMouseMovement() {
+	final Point currentCursorLocation = browser.getDisplay().getCursorLocation();
+	Point cursorLocationInControlCoordinate = browser.toControl(currentCursorLocation);
+	boolean isCursorInsideBrowser = browser.getBounds().contains(cursorLocationInControlCoordinate);
+	boolean hasCursorLocationChanged = !currentCursorLocation.equals(previousCursorPosition.location);
+
+	boolean mousePassedBrowserBorder = previousCursorPosition.isInsideBrowser != isCursorInsideBrowser;
+	boolean mouseMovedInsideBrowser = isCursorInsideBrowser && hasCursorLocationChanged;
+	if (mousePassedBrowserBorder) {
+		if (isCursorInsideBrowser) {
+			sendMouseEvent(cursorLocationInControlCoordinate, SWT.MouseEnter);
+		} else {
+			sendMouseEvent(cursorLocationInControlCoordinate, SWT.MouseExit);
+		}
+	} else if (mouseMovedInsideBrowser) {
+		sendMouseEvent(cursorLocationInControlCoordinate, SWT.MouseMove);
+	}
+	previousCursorPosition = new CursorPosition(currentCursorLocation, isCursorInsideBrowser);
+}
+
+private void sendMouseEvent(Point cursorLocationInControlCoordinate, int mouseEvent) {
+	Event newEvent = new Event();
+	newEvent.widget = browser;
+	Point position = cursorLocationInControlCoordinate;
+	newEvent.x = position.x;
+	newEvent.y = position.y;
+	newEvent.type = mouseEvent;
+	browser.notifyListeners(newEvent.type, newEvent);
+}
+
+private boolean hasDisplayFocus() {
+	return browser.getDisplay().getFocusControl() != null;
 }
 
 @Override
@@ -879,10 +976,29 @@ int handleContextMenuRequested(long pView, long pArgs) {
 
 	long[] locationPointer = new long[1];
 	args.get_Location(locationPointer);
-	POINT pt = new POINT();
-	OS.MoveMemory(pt, locationPointer, POINT.sizeof);
-	pt.x = DPIUtil.autoScaleDown(pt.x); // To Points
-	pt.y = DPIUtil.autoScaleDown(pt.y); // To Points
+	POINT win32Point = new POINT();
+	OS.MoveMemory(win32Point, locationPointer, POINT.sizeof);
+
+	// From WebView2 we receive widget-relative win32 POINTs.
+	// The Event we create here will be mapped to a
+	// MenuDetectEvent used with SWT.MenuDetect eventually, which
+	// uses display-relative DISPLAY coordinates.
+	// Thefore, we
+	// - first, explicitly scale up the the win32 POINT values from edge
+	//   to PIXEL coordinates with the real native zoom value
+	//   independent from the swt.autoScale property:
+	Point pt = new Point( //
+			DPIUtil.scaleUp(win32Point.x, DPIUtil.getNativeDeviceZoom()), //
+			DPIUtil.scaleUp(win32Point.y, DPIUtil.getNativeDeviceZoom()));
+	// - then, scale back down from PIXEL to DISPLAY coordinates, taking
+	//   swt.autoScale property into account
+	//   which is also later considered in Menu#setLocation()
+	pt = new Point( //
+			DPIUtil.scaleDown(pt.x, DPIUtil.getZoomForAutoscaleProperty(browser.getShell().nativeZoom)), //
+			DPIUtil.scaleDown(pt.y, DPIUtil.getZoomForAutoscaleProperty(browser.getShell().nativeZoom)));
+	// - finally, translate the POINT from widget-relative
+	//   to DISPLAY-relative coordinates
+	pt = browser.toDisplay(pt.x, pt.y);
 	Event event = new Event();
 	event.x = pt.x;
 	event.y = pt.y;

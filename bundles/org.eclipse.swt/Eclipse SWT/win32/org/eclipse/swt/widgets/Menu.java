@@ -358,7 +358,7 @@ void createItem (MenuItem item, int index) {
 	info.fMask = OS.MIIM_ID | OS.MIIM_TYPE | OS.MIIM_DATA;
 	info.wID = item.id;
 	info.dwItemData = item.id;
-	info.fType = item.widgetStyle ();
+	info.fType = (style & SWT.BAR) != 0 && needsMenuCallback() ? OS.MFT_OWNERDRAW :  item.widgetStyle ();
 	info.dwTypeData = pszText;
 	boolean success = OS.InsertMenuItem (handle, index, true, info);
 	if (pszText != 0) OS.HeapFree (hHeap, 0, pszText);
@@ -1188,9 +1188,7 @@ public void setEnabled (boolean enabled) {
  * </ul>
  */
 public void setLocation (int x, int y) {
-	checkWidget ();
-	int zoom = getZoom();
-	setLocationInPixels(DPIUtil.scaleUp(x, zoom), DPIUtil.scaleUp(y, zoom));
+	setLocation(new Point(x, y));
 }
 
 void setLocationInPixels (int x, int y) {
@@ -1227,7 +1225,7 @@ void setLocationInPixels (int x, int y) {
 public void setLocation (Point location) {
 	checkWidget ();
 	if (location == null) error (SWT.ERROR_NULL_ARGUMENT);
-	location = DPIUtil.scaleUp(location, getZoom());
+	location = getDisplay().translateLocationInPixelsInDisplayCoordinateSystem(location.x, location.y);
 	setLocationInPixels(location.x, location.y);
 }
 

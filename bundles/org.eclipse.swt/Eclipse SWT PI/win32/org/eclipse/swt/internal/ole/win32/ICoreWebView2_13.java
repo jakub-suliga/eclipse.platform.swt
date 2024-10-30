@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2021 Syntevo and others.
+ * Copyright (c) 2024 SAP SE and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -9,20 +9,18 @@
  * SPDX-License-Identifier: EPL-2.0
  *
  * Contributors:
- *     Syntevo - initial API and implementation
+ *     SAP SE - initial implementation
  *******************************************************************************/
-  
-#ifndef INC_gtk4_H
-#define INC_gtk4_H
+package org.eclipse.swt.internal.ole.win32;
 
-#define NDEBUG
+public class ICoreWebView2_13 extends ICoreWebView2_12 {
 
-#define G_DISABLE_DEPRECATED
-#define GTK_DISABLE_SINGLE_INCLUDES
+public ICoreWebView2_13(long address) {
+	super(address);
+}
 
-#include <gtk/gtk.h>
+public int get_Profile(long[] value) {
+	return COM.VtblCall(105, address, value);
+}
 
-// Hard-link code generated from GTK4.java to LIB_GTK
-#define GTK4_LOAD_FUNCTION(var, name) LOAD_FUNCTION_LIB(var, LIB_GTK, name)
-
-#endif /* INC_gtk4_H */
+}
