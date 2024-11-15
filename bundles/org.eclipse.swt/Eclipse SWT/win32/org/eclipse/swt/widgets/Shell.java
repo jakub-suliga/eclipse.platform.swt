@@ -1568,14 +1568,20 @@ public void setAlpha (int alpha) {
 
 @Override
 public Rectangle getBounds() {
-	Rectangle boundsInPixels = getBoundsInPixels();
-	return display.translateRectangleInPointsInDisplayCoordinateSystemByContainment(boundsInPixels.x, boundsInPixels.y, boundsInPixels.width, boundsInPixels.height);
+	if (getDisplay().isRescalingAtRuntime()) {
+		Rectangle boundsInPixels = getBoundsInPixels();
+		return display.translateRectangleInPointsInDisplayCoordinateSystemByContainment(boundsInPixels.x, boundsInPixels.y, boundsInPixels.width, boundsInPixels.height);
+	}
+	return super.getBounds();
 }
 
 @Override
 public Point getLocation() {
-	Point locationInPixels = getLocationInPixels();
-	return display.translateLocationInPointInDisplayCoordinateSystem(locationInPixels.x, locationInPixels.y);
+	if (getDisplay().isRescalingAtRuntime()) {
+		Point locationInPixels = getLocationInPixels();
+		return display.translateLocationInPointInDisplayCoordinateSystem(locationInPixels.x, locationInPixels.y);
+	}
+	return super.getLocation();
 }
 
 @Override
@@ -1586,8 +1592,12 @@ public void setLocation(Point location) {
 
 @Override
 public void setLocation(int x, int y) {
-	Point location = display.translateLocationInPixelsInDisplayCoordinateSystem(x, y);
-	setLocationInPixels(location.x, location.y);
+	if (getDisplay().isRescalingAtRuntime()) {
+		Point location = display.translateLocationInPixelsInDisplayCoordinateSystem(x, y);
+		setLocationInPixels(location.x, location.y);
+	} else {
+		super.setLocation(x, y);
+	}
 }
 
 @Override
@@ -1598,8 +1608,12 @@ public void setBounds(Rectangle rect) {
 
 @Override
 public void setBounds(int x, int y, int width, int height) {
-	Rectangle boundsInPixels = display.translateRectangleInPixelsInDisplayCoordinateSystemByContainment(x, y, width, height);
-	setBoundsInPixels(boundsInPixels.x, boundsInPixels.y, boundsInPixels.width, boundsInPixels.height);
+	if (getDisplay().isRescalingAtRuntime()) {
+		Rectangle boundsInPixels = display.translateRectangleInPixelsInDisplayCoordinateSystemByContainment(x, y, width, height);
+		setBoundsInPixels(boundsInPixels.x, boundsInPixels.y, boundsInPixels.width, boundsInPixels.height);
+	} else {
+		super.setBounds(x, y, width, height);
+	}
 }
 
 @Override

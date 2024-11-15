@@ -568,6 +568,7 @@ private String getDataDir(Display display) {
 @Override
 public void create(Composite parent, int style) {
 	containingEnvironment = createEnvironment();
+	containingEnvironment.instances().add(this);
 	long[] ppv = new long[1];
 	int hr = containingEnvironment.environment().QueryInterface(COM.IID_ICoreWebView2Environment2, ppv);
 	if (hr == COM.S_OK) environment2 = new ICoreWebView2Environment2(ppv[0]);
@@ -591,9 +592,11 @@ void setupBrowser(int hr, long pv) {
 	case COM.S_OK:
 		break;
 	case COM.E_WRONG_THREAD:
+		containingEnvironment.instances().remove(this);
 		error(SWT.ERROR_THREAD_INVALID_ACCESS, hr);
 		break;
 	default:
+		containingEnvironment.instances().remove(this);
 		error(SWT.ERROR_NO_HANDLES, hr);
 	}
 	long[] ppv = new long[] {pv};
@@ -688,7 +691,6 @@ void setupBrowser(int hr, long pv) {
 	browser.addListener(SWT.Move, this::browserMove);
 	scheduleMouseMovementHandling();
 
-	containingEnvironment.instances().add(this);
 	// Sometimes when the shell of the browser is opened before the browser is
 	// initialized, nothing is drawn on the shell. We need browserResize to force
 	// the shell to draw itself again.
@@ -947,13 +949,52 @@ int handleSourceChanged(long pView, long pArgs) {
 	// to an empty string. Navigations with NavigateToString set the Source
 	// to about:blank. Initial Source is about:blank. If Source value
 	// is the same between navigations, SourceChanged isn't fired.
-	// Calling LocationListener#changed() was moved to
-	// handleNavigationCompleted() to have consistent/symmetric
+	// Since we do not use NavigateToString (but always use a dummy file)
+	// we always see a proper (file:// URI).
+	// The main location events are fired from
+	// handleNavigationStarting() / handleNavigationCompleted()
+	// to get consistent/symmetric
 	// LocationListener.changing() -> LocationListener.changed() behavior.
-	// TODO: #fragment navigation inside a page does not result in
-	// NavigationStarted / NavigationCompleted events from WebView2.
-	// so for now we cannot send consistent changing() + changed() events
-	// for those scenarios.
+	// For #fragment navigation within a page, no NavigationStarted/NavigationCompleted
+	// events are send from WebView2.
+	// Instead, SourceChanged is fired.
+	// We therefore also handle this event specifically for in-same-document scenario.
+	// Since SourceChanged cannot be blocked, we only send out
+	// LocationListener#changed() events, no changing() events.
+	int[] isNewDocument = new int[1];
+	ICoreWebView2SourceChangedEventArgs args = new ICoreWebView2SourceChangedEventArgs(pArgs);
+	args.get_IsNewDocument(isNewDocument);
+	if (isNewDocument[0] == 0) {
+		// #fragment navigation inside the same document
+		long[] ppsz = new long[1];
+		int hr = webViewProvider.getWebView(true).get_Source(ppsz);
+		if (hr != COM.S_OK) return hr;
+		String url = wstrToString(ppsz[0], true);
+		int fragmentIndex = url.indexOf('#');
+		String urlWithoutFragment = fragmentIndex == -1 ? url : url.substring(0,fragmentIndex);
+		String location;
+		if (isLocationForCustomText(urlWithoutFragment)) {
+			if (fragmentIndex != -1) {
+				location = ABOUT_BLANK.toString() + url.substring(fragmentIndex);
+			} else {
+				location = ABOUT_BLANK.toString();
+			}
+		} else {
+			location = url;
+		}
+		browser.getDisplay().asyncExec(() -> {
+			if (browser.isDisposed()) return;
+			LocationEvent event = new LocationEvent(browser);
+			event.display = browser.getDisplay();
+			event.widget = browser;
+			event.location = location;
+			event.top = true;
+			for (LocationListener listener : locationListeners) {
+				listener.changed(event);
+				if (browser.isDisposed()) return;
+			}
+		});
+	}
 	return COM.S_OK;
 }
 
