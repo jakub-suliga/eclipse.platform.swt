@@ -457,6 +457,7 @@ public class OS extends C {
 	public static final int EN_CHANGE = 0x300;
 	public static final int EP_EDITTEXT = 1;
 	public static final int ERROR_FILE_NOT_FOUND = 0x2;
+	public static final int ERROR_INVALID_STATE = 0x139F;
 	public static final int ERROR_NO_MORE_ITEMS = 0x103;
 	public static final int ERROR_CANCELED = 0x4C7;
 	public static final int ESB_DISABLE_BOTH = 0x3;
@@ -1752,6 +1753,7 @@ public class OS extends C {
 	public static final int WM_DEADCHAR = 0x103;
 	public static final int WM_DESTROY = 0x2;
 	public static final int WM_DPICHANGED = 0x02E0;
+	public static final int WM_DISPLAYCHANGE = 0x7E;
 	public static final int WM_DRAWITEM = 0x2b;
 	public static final int WM_ENDSESSION = 0x16;
 	public static final int WM_ENTERIDLE = 0x121;

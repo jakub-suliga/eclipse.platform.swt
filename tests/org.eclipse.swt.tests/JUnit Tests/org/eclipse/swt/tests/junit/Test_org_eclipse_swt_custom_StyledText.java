@@ -63,6 +63,8 @@ import org.eclipse.swt.events.VerifyListener;
 import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.FontData;
+import org.eclipse.swt.graphics.FontMetrics;
+import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.GlyphMetrics;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.RGB;
@@ -4790,6 +4792,11 @@ public void test_notFixedLineHeightDoesntChangeLinePixelIfUnnecessary() {
 	int firstLinePixel = text.getLinePixel(line);
 	text.setWordWrap(true); // make non fixed line height
 	assertEquals(firstLinePixel, text.getLinePixel(line));
+	shell.setVisible(true);
+	shell.forceActive();
+	text.setVisible(true);
+	assertTrue("setFocus failed",text.setFocus());
+	assertTrue("text has not focus",text.isFocusControl());
 	text.replaceTextRange(0, 1, "X");
 	assertEquals(0, text.getTopIndex());
 	assertEquals(0, text.getLinePixel(0));
@@ -5933,5 +5940,23 @@ public void test_rangeSelectionKeepsCaret() {
 	text.invokeAction(ST.SELECT_LINE_DOWN);
 	assertEquals("Selection does not start from caret", initialOffset, text.getSelection().x);
 	assertNotEquals("Selection is not left-to-right", text.getSelection().x, text.getCaretOffset());
+}
+
+@Test
+public void test_bug1610_fixedLineHeightWithChangingToSmallerFont_noException() {
+	shell.setVisible(true);
+	shell.setLayout(new GridLayout(1, false));
+
+	GC gc = new GC(shell.getDisplay());
+	FontMetrics metrics = gc.getFontMetrics();
+	text.setFixedLineMetrics(metrics);
+
+	FontData fontData = text.getFont().getFontData()[0];
+	text.setText("");
+	int smallFontHeight = metrics.getAscent() + metrics.getDescent() - 4;
+	Font font = new Font(text.getDisplay(), fontData.getName(), smallFontHeight, fontData.getStyle());
+	text.setFont(font);
+	font.dispose();
+	gc.dispose();
 }
 }
