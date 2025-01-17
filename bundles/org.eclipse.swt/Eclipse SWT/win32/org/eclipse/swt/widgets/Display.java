@@ -948,8 +948,9 @@ public void close () {
 protected void create (DeviceData data) {
 	checkSubclass ();
 	checkDisplay (thread = Thread.currentThread (), true);
-	if (DPIUtil.isAutoScaleOnRuntimeActive()) {
-		setRescalingAtRuntime(true);
+	if (DPIUtil.isMonitorSpecificScalingActive()) {
+		setMonitorSpecificScaling(true);
+		DPIUtil.setAutoScaleForMonitorSpecificScaling();
 	}
 	createDisplay (data);
 	register (this);
@@ -1203,7 +1204,7 @@ static Image createIcon (Image image, int zoom) {
 	if (hIcon == 0) SWT.error(SWT.ERROR_NO_HANDLES);
 	OS.DeleteObject (hBitmap);
 	OS.DeleteObject (hMask);
-	return Image.win32_new (device, SWT.ICON, hIcon);
+	return Image.win32_new (device, SWT.ICON, hIcon, zoom);
 }
 
 long getTextSearchIcon(int size) {
@@ -2542,27 +2543,28 @@ Font getSystemFont (int zoom) {
  */
 public Image getSystemImage (int id) {
 	checkDevice ();
+	int primaryMonitorNativeZoom = getPrimaryMonitor().getZoom();
 	switch (id) {
 		case SWT.ICON_ERROR: {
 			if (errorImage != null) return errorImage;
 			long hIcon = OS.LoadImage (0, OS.OIC_HAND, OS.IMAGE_ICON, 0, 0, OS.LR_SHARED);
-			return errorImage = Image.win32_new (this, SWT.ICON, hIcon);
+			return errorImage = Image.win32_new (this, SWT.ICON, hIcon, primaryMonitorNativeZoom);
 		}
 		case SWT.ICON_WORKING:
 		case SWT.ICON_INFORMATION: {
 			if (infoImage != null) return infoImage;
 			long hIcon = OS.LoadImage (0, OS.OIC_INFORMATION, OS.IMAGE_ICON, 0, 0, OS.LR_SHARED);
-			return infoImage = Image.win32_new (this, SWT.ICON, hIcon);
+			return infoImage = Image.win32_new (this, SWT.ICON, hIcon, primaryMonitorNativeZoom);
 		}
 		case SWT.ICON_QUESTION: {
 			if (questionImage != null) return questionImage;
 			long hIcon = OS.LoadImage (0, OS.OIC_QUES, OS.IMAGE_ICON, 0, 0, OS.LR_SHARED);
-			return questionImage = Image.win32_new (this, SWT.ICON, hIcon);
+			return questionImage = Image.win32_new (this, SWT.ICON, hIcon, primaryMonitorNativeZoom);
 		}
 		case SWT.ICON_WARNING: {
 			if (warningIcon != null) return warningIcon;
 			long hIcon = OS.LoadImage (0, OS.OIC_BANG, OS.IMAGE_ICON, 0, 0, OS.LR_SHARED);
-			return warningIcon = Image.win32_new (this, SWT.ICON, hIcon);
+			return warningIcon = Image.win32_new (this, SWT.ICON, hIcon, primaryMonitorNativeZoom);
 		}
 	}
 	return null;
@@ -5261,6 +5263,7 @@ private class ThemeData {
 		return OS.OpenThemeData(hwndMessage, themeName, dpi);
 	}
 }
+
 /**
  * {@return whether rescaling of shells at runtime when the DPI scaling of a
  * shell's monitor changes is activated for this device}
@@ -5286,8 +5289,15 @@ public boolean isRescalingAtRuntime() {
  * @param activate whether rescaling shall be activated or deactivated
  * @return whether activating or deactivating the rescaling was successful
  * @since 3.127
+ * @deprecated this method should not be used as it needs to be called already
+ *             during instantiation to take proper effect
  */
+@Deprecated(since = "2025-03", forRemoval = true)
 public boolean setRescalingAtRuntime(boolean activate) {
+	return setMonitorSpecificScaling(activate);
+}
+
+private boolean setMonitorSpecificScaling(boolean activate) {
 	int desiredApiAwareness = activate ? OS.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 : OS.DPI_AWARENESS_CONTEXT_SYSTEM_AWARE;
 	if (setDPIAwareness(desiredApiAwareness)) {
 		rescalingAtRuntime = activate;

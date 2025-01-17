@@ -1210,6 +1210,7 @@ public class OS extends C {
 	public static final int SHADEBLENDCAPS = 120;
 	public static final int SHGFI_ICON = 0x000000100;
 	public static final int SHGFI_SMALLICON= 0x1;
+	public static final int SHGFI_LARGEICON= 0x0;
 	public static final int SHGFI_USEFILEATTRIBUTES = 0x000000010;
 	public static final int SIGDN_FILESYSPATH = 0x80058000;
 	public static final int SIF_ALL = 0x17;
@@ -2345,6 +2346,8 @@ public static final native long ActivateKeyboardLayout(long hkl, int Flags);
  */
 public static final native int AddFontResourceEx(char[] lpszFilename, int fl, long pdv);
 public static final native boolean AdjustWindowRectEx (RECT lpRect, int dwStyle, boolean bMenu, int dwExStyle);
+/** @method flags=dynamic */
+public static final native boolean AdjustWindowRectExForDpi (RECT lpRect, int dwStyle, boolean bMenu, int dwExStyle, int dpi);
 /** @method flags=no_gen */
 public static final native boolean AllowDarkModeForWindow(long hWnd, boolean allow);
 public static final native boolean AllowSetForegroundWindow (int dwProcessId);
